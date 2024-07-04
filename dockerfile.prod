@@ -1,0 +1,59 @@
+######################################
+# *** BUILD FOR LOCAL DEVELOPMENT **
+######################################
+FROM node:21-alpine3.19 as deps
+WORKDIR /app
+COPY package*.json ./
+
+RUN yarn install
+
+COPY . .
+
+######################################
+# *** BUILD FOR PRODUCTION ***
+######################################
+FROM node:21-alpine3.19 as build
+WORKDIR /app
+COPY package*.json ./
+
+# Copiar de deps los modulos de node
+COPY --from=deps /app/node_modules ./node_modules
+
+COPY . .
+
+# RUN npm run test
+RUN yarn build
+
+ENV NODE_ENV production
+
+# RUN npm ci --only=production 
+RUN npm cache clean --force
+
+
+
+
+######################################
+# *** DEPENDENCIES PROD ***
+######################################
+FROM node:21-alpine3.19 as deps_prod
+WORKDIR /app
+COPY package*.json ./
+COPY /prisma ./prisma
+
+RUN yarn install --prod
+
+RUN npx prisma generate
+
+COPY . .
+
+
+######################################
+# *** BUILD PRODUCTION ***
+######################################
+FROM node:21-alpine3.19 as prod
+
+COPY --from=deps_prod /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+
+EXPOSE 3000
+CMD [ "node", "dist/main.js" ]

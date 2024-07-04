@@ -1,11 +1,11 @@
 import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { SinginDto, registerDto } from './dto';
-import { PrismaClient, User } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { validate as ISUUID } from 'uuid';
 import { RpcException } from '@nestjs/microservices';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { IPayloadToken } from './interfaces';
+import { IPayloadToken, IUser } from './interfaces';
 
 @Injectable()
 export class AuthService extends PrismaClient implements OnModuleInit {
@@ -60,7 +60,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
 
   }
 
-  async findUser( pattern: string ): Promise<User> {
+  async findUser( pattern: string ): Promise<IUser> {
     
     const where: any = {};
 
@@ -112,6 +112,43 @@ export class AuthService extends PrismaClient implements OnModuleInit {
       throw new RpcException( error );
     }
     
+  }
+
+  async verifyToken( token: string ) {
+    try {
+      
+      const payload = this._jwtService.verify<IPayloadToken>( token );
+
+      if(!payload) {
+        throw new RpcException({
+          status: HttpStatus.UNAUTHORIZED,
+          message: `Invalid token`
+        });
+      }
+
+      const { id, email } = payload;
+
+      const user = await this.findUser( email );
+
+      // console.log('findUser ::: ', user);
+
+      if( !user ) {
+        throw new RpcException({
+          status: HttpStatus.UNAUTHORIZED,
+          message: `User by id# ${id}, not found`
+        });
+      }
+
+      delete user.password;
+
+      const newToken = this.buildToken({ id: user.id, email: user.email });
+
+      return { user, token: newToken };
+
+    } catch (error) {
+      // console.log('verifyToken ::: ', error);
+      throw new RpcException( error );
+    }
   }
 
   buildToken( payload: IPayloadToken ): string {
